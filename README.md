@@ -1,79 +1,52 @@
 # Flowdan Floaters
 
-An interactive p5.js canvas inspired by eye floaters. Semi-transparent cutouts of Flowdan drift, lag and respond to mouse or touch movement.
+A p5.js simulation inspired by vitreous eye floaters.
 
-## Live site
+## Repository files
 
-After enabling GitHub Pages, the project will be available at:
+Upload these files to the root of the GitHub repository:
 
-**https://shnnn22.github.io/flowdan-floaters/**
+- `index.html`
+- `sketch.js`
+- `styles.css`
+- `flowdan.png`
+- `README.md`
 
-## Required image
+The project uses one transparent image named exactly `flowdan.png`. The JavaScript creates visual variants at runtime using different scale, opacity, blur, rotation, mirroring, depth and motion.
 
-Add an authorized transparent PNG of Flowdan to the repository root and name it exactly:
+## GitHub Pages
 
-```text
-flowdan.png
-```
+In the repository:
 
-Recommended preparation:
-
-- Transparent background
-- Tight crop around the subject
-- PNG in sRGB
-- Approximately 800–1600 px on the longest side
-- Soft or feathered edges work well with the floater effect
-
-## Files
-
-```text
-flowdan-floaters/
-├── index.html
-├── sketch.js
-├── styles.css
-├── flowdan.png
-└── README.md
-```
-
-## Publish with GitHub Pages
-
-1. Create a public repository named `flowdan-floaters` under the GitHub account `SHNNN22`.
-2. Upload all project files, including `flowdan.png`.
-3. Open **Settings → Pages**.
-4. Under **Build and deployment**, choose **Deploy from a branch**.
-5. Select branch **main** and folder **/(root)**.
+1. Open **Settings**.
+2. Open **Pages**.
+3. Select **Deploy from a branch**.
+4. Select branch **main**.
+5. Select folder **/(root)**.
 6. Save.
 
-The GitHub repository URL will be:
+Expected site:
 
-**https://github.com/SHNNN22/flowdan-floaters**
+`https://shnnn22.github.io/flowdan-floaters/`
 
-## Local preview
+After replacing files, test with a cache-busting query:
 
-Run a local server from the project folder:
+`https://shnnn22.github.io/flowdan-floaters/?v=8`
 
-```bash
-python3 -m http.server 8080
-```
+## Image preparation
 
-Then open:
+For the best result:
 
-```text
-http://localhost:8080
-```
+- transparent PNG;
+- tight crop around the subject;
+- longest edge approximately 800–1200 px;
+- preferably below 2 MB;
+- sRGB;
+- filename exactly `flowdan.png`.
 
-## Controls
+## Interaction
 
-- Move the mouse or drag a finger to disturb the floaters.
-- Press `R` to reset their positions.
-- Press `H` to hide or show the instruction panel.
-
-## Main settings
-
-Edit the `SETTINGS` object at the top of `sketch.js`:
-
-- `count`: number of floaters
-- `minSize` / `maxSize`: sprite size range
-- `movementStrength`: response to pointer movement
-- `dampingNear` / `dampingFar`: viscosity and settling speed
-- `opacityNear` / `opacityFar`: transparency by depth
+- Mouse movement disturbs the virtual vitreous.
+- On mobile, drag in any direction.
+- The floaters react with inertia, overshoot, spring-back, wobble and depth-dependent drag.
+- The **Reset floaters** button randomizes the composition.

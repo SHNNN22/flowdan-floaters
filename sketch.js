@@ -1,31 +1,52 @@
 /*
-  Flowdan Floaters — direct touch-follow version
+  Flowdan Floaters — viscous flow-field simulation
 
-  Interaction:
-  - Drag left/right/up/down: floaters move in the SAME direction.
-  - Near floaters move more than distant floaters.
-  - Releasing the finger leaves a short, smooth inertia.
-  - Gentle ambient drift remains, but cannot overpower touch input.
+  Required image:
+    flowdan.png
+
+  The sketch automatically creates many visual variants from that one image.
+  No additional PNG files are required.
 */
 
 let sourceImage;
-let spriteImage;
+let baseSprite;
 let canvasElement;
 let floaters = [];
 
-const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-const FLOATER_COUNT = isMobile ? 14 : 22;
-const SPRITE_MAX_SIDE = isMobile ? 220 : 300;
+const DEVICE_IS_MOBILE =
+  /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+  navigator.maxTouchPoints > 1;
+
+const REDUCED_MOTION = window.matchMedia?.(
+  '(prefers-reduced-motion: reduce)'
+).matches ?? false;
+
+const FLOATER_COUNT = REDUCED_MOTION
+  ? 8
+  : DEVICE_IS_MOBILE
+    ? 14
+    : 24;
+
+const MAX_SPRITE_SIDE = DEVICE_IS_MOBILE ? 260 : 420;
 
 const pointer = {
   active: false,
-  lastX: 0,
-  lastY: 0,
-  pendingX: 0,
-  pendingY: 0,
-  velocityX: 0,
-  velocityY: 0,
-  lastEventTime: 0
+  x: 0,
+  y: 0,
+  previousX: 0,
+  previousY: 0,
+  vx: 0,
+  vy: 0,
+  smoothedVX: 0,
+  smoothedVY: 0,
+  lastTime: 0
+};
+
+let fluid = {
+  vx: 0,
+  vy: 0,
+  displacementX: 0,
+  displacementY: 0
 };
 
 function preload() {
@@ -40,7 +61,9 @@ function setup() {
   const holder = document.getElementById('canvas-holder');
   const canvas = createCanvas(holder.clientWidth, holder.clientHeight);
   canvas.parent(holder);
+
   canvasElement = canvas.elt;
+  canvasElement.style.touchAction = 'none';
 
   pixelDensity(1);
   frameRate(60);
@@ -48,201 +71,349 @@ function setup() {
   noStroke();
 
   prepareSprite();
-  createFloaters();
-  installPointerControls();
+  rebuildFloaters();
+  installPointerInput();
 
-  const resetButton = document.getElementById('reset-button');
-  if (resetButton) resetButton.addEventListener('click', createFloaters);
+  document
+    .getElementById('reset-button')
+    ?.addEventListener('click', rebuildFloaters);
 }
 
 function prepareSprite() {
-  spriteImage = sourceImage.get();
+  baseSprite = sourceImage.get();
 
-  const longestSide = Math.max(spriteImage.width, spriteImage.height);
-  if (longestSide > SPRITE_MAX_SIDE) {
-    const scale = SPRITE_MAX_SIDE / longestSide;
-    spriteImage.resize(
-      Math.max(1, Math.round(spriteImage.width * scale)),
-      Math.max(1, Math.round(spriteImage.height * scale))
+  const longestSide = Math.max(baseSprite.width, baseSprite.height);
+
+  if (longestSide > MAX_SPRITE_SIDE) {
+    const scale = MAX_SPRITE_SIDE / longestSide;
+
+    baseSprite.resize(
+      Math.max(1, Math.round(baseSprite.width * scale)),
+      Math.max(1, Math.round(baseSprite.height * scale))
     );
   }
 }
 
-function createFloaters() {
+function rebuildFloaters() {
   floaters.length = 0;
 
-  for (let i = 0; i < FLOATER_COUNT; i += 1) {
-    const depth = random(); // 0 = near, 1 = far
-    const base = min(width, height);
-    const size = base * lerp(0.18, 0.075, depth) * random(0.78, 1.22);
-
-    floaters.push({
-      x: random(-size * 0.25, width + size * 0.25),
-      y: random(-size * 0.25, height + size * 0.25),
-
-      // Small initial velocity only.
-      vx: random(-1.5, 1.5),
-      vy: random(-1.2, 1.2),
-
-      depth,
-      size,
-      alpha: lerp(82, 34, depth) * random(0.82, 1.08),
-
-      angle: random(TWO_PI),
-      angularVelocity: random(-0.08, 0.08),
-
-      driftPhaseX: random(TWO_PI),
-      driftPhaseY: random(TWO_PI),
-      driftRateX: random(0.25, 0.5),
-      driftRateY: random(0.22, 0.46)
-    });
+  for (let index = 0; index < FLOATER_COUNT; index += 1) {
+    floaters.push(createFloater(index));
   }
 
-  // Draw distant floaters first.
+  // Distant elements are rendered first.
   floaters.sort((a, b) => b.depth - a.depth);
+
+  fluid.vx = 0;
+  fluid.vy = 0;
+  fluid.displacementX = 0;
+  fluid.displacementY = 0;
+}
+
+function createFloater(index) {
+  const depth = random();
+  const near = 1 - depth;
+  const reference = min(width, height);
+
+  return {
+    x: random(width),
+    y: random(height),
+
+    anchorX: random(width),
+    anchorY: random(height),
+
+    vx: random(-3, 3),
+    vy: random(-3, 3),
+
+    depth,
+    mass: lerp(1.9, 0.7, near),
+    response: lerp(0.22, 0.68, near),
+    spring: lerp(0.28, 0.10, near),
+    drag: lerp(1.45, 0.82, near),
+
+    size:
+      reference *
+      lerp(0.075, 0.22, near) *
+      random(0.78, 1.26),
+
+    alpha:
+      lerp(24, 92, near) *
+      random(0.82, 1.08),
+
+    blurAmount:
+      depth > 0.66
+        ? random(1.5, 3.5)
+        : depth < 0.22
+          ? random(0.5, 2.0)
+          : random(0, 1.0),
+
+    angle: random(TWO_PI),
+    angularVelocity: random(-0.08, 0.08),
+
+    wobblePhaseX: random(TWO_PI),
+    wobblePhaseY: random(TWO_PI),
+    wobbleRateX: random(0.18, 0.42),
+    wobbleRateY: random(0.17, 0.38),
+    wobbleAmplitude: random(2, 8) * lerp(0.45, 1.0, near),
+
+    imageFlip: random() > 0.5 ? 1 : -1,
+
+    // Slightly varied tonal treatment from a single PNG.
+    tintValue: random(220, 255),
+
+    index
+  };
 }
 
 function draw() {
   clear();
 
-  const dt = Math.min(deltaTime, 34) / 1000;
-  const now = millis() / 1000;
+  const dt = Math.min(deltaTime, 33.33) / 1000;
+  const time = millis() / 1000;
 
-  // Consume the exact finger displacement once per frame.
-  const dragX = pointer.pendingX;
-  const dragY = pointer.pendingY;
-  pointer.pendingX = 0;
-  pointer.pendingY = 0;
+  updatePointerSmoothing(dt);
+  updateFluid(dt);
 
-  // Smooth release inertia.
-  if (!pointer.active) {
-    pointer.velocityX *= Math.pow(0.045, dt);
-    pointer.velocityY *= Math.pow(0.045, dt);
+  for (const floater of floaters) {
+    updateFloater(floater, dt, time);
+    renderFloater(floater);
+  }
+}
+
+function updatePointerSmoothing(dt) {
+  const targetVX = pointer.active ? pointer.vx : 0;
+  const targetVY = pointer.active ? pointer.vy : 0;
+
+  const smoothing = 1 - Math.exp(-(pointer.active ? 9.0 : 3.0) * dt);
+
+  pointer.smoothedVX = lerp(pointer.smoothedVX, targetVX, smoothing);
+  pointer.smoothedVY = lerp(pointer.smoothedVY, targetVY, smoothing);
+}
+
+function updateFluid(dt) {
+  /*
+    Pointer motion excites the virtual vitreous.
+    The vitreous continues moving after the gesture and then settles.
+  */
+  const inputStrength = REDUCED_MOTION ? 0.08 : 0.22;
+
+  fluid.vx += pointer.smoothedVX * inputStrength * dt;
+  fluid.vy += pointer.smoothedVY * inputStrength * dt;
+
+  // Spring toward equilibrium.
+  fluid.vx += -fluid.displacementX * 5.4 * dt;
+  fluid.vy += -fluid.displacementY * 5.4 * dt;
+
+  // Viscous damping.
+  const fluidDamping = Math.exp(-3.15 * dt);
+  fluid.vx *= fluidDamping;
+  fluid.vy *= fluidDamping;
+
+  fluid.displacementX += fluid.vx * dt;
+  fluid.displacementY += fluid.vy * dt;
+
+  // Keep displacement bounded after extreme swipes.
+  const maxDisplacement = min(width, height) * 0.23;
+  fluid.displacementX = constrain(
+    fluid.displacementX,
+    -maxDisplacement,
+    maxDisplacement
+  );
+  fluid.displacementY = constrain(
+    fluid.displacementY,
+    -maxDisplacement,
+    maxDisplacement
+  );
+}
+
+function updateFloater(f, dt, time) {
+  const near = 1 - f.depth;
+
+  /*
+    Each particle receives the common fluid movement with a different
+    response according to depth and mass.
+  */
+  const targetX =
+    f.anchorX +
+    fluid.displacementX * lerp(0.34, 1.15, near);
+
+  const targetY =
+    f.anchorY +
+    fluid.displacementY * lerp(0.34, 1.15, near);
+
+  const springX = (targetX - f.x) * f.spring;
+  const springY = (targetY - f.y) * f.spring;
+
+  /*
+    Flow force adds overshoot.
+    Near floaters respond more strongly and settle more visibly.
+  */
+  const flowForceX = fluid.vx * f.response;
+  const flowForceY = fluid.vy * f.response;
+
+  const wobbleX =
+    Math.sin(time * f.wobbleRateX + f.wobblePhaseX) *
+    f.wobbleAmplitude;
+
+  const wobbleY =
+    Math.cos(time * f.wobbleRateY + f.wobblePhaseY) *
+    f.wobbleAmplitude;
+
+  f.vx += ((springX + flowForceX + wobbleX * 0.12) / f.mass) * dt * 60;
+  f.vy += ((springY + flowForceY + wobbleY * 0.12) / f.mass) * dt * 60;
+
+  const particleDamping = Math.exp(-f.drag * dt);
+  f.vx *= particleDamping;
+  f.vy *= particleDamping;
+
+  f.x += f.vx * dt;
+  f.y += f.vy * dt;
+
+  f.angle +=
+    (f.angularVelocity + fluid.vx * 0.000035 * f.imageFlip) * dt;
+
+  wrapFloater(f);
+}
+
+function renderFloater(f) {
+  push();
+
+  translate(f.x, f.y);
+  rotate(f.angle);
+  scale(f.imageFlip, 1);
+
+  tint(f.tintValue, f.alpha);
+
+  if (f.blurAmount > 0.25) {
+    drawingContext.filter = `blur(${f.blurAmount}px)`;
   }
 
-  for (let i = 0; i < floaters.length; i += 1) {
-    const f = floaters[i];
-    const nearFactor = 1 - f.depth;
+  /*
+    Preserve the original image aspect ratio instead of forcing a square.
+  */
+  const aspect =
+    baseSprite.width > 0 && baseSprite.height > 0
+      ? baseSprite.width / baseSprite.height
+      : 1;
 
-    /*
-      Direct follow:
-      near floaters follow approximately 75% of finger displacement;
-      distant floaters follow approximately 30%.
-    */
-    const directFollow = lerp(0.30, 0.75, nearFactor);
-    f.x += dragX * directFollow;
-    f.y += dragY * directFollow;
+  let drawWidth = f.size;
+  let drawHeight = f.size;
 
-    /*
-      Inertia is based on swipe speed and continues after release.
-      It moves in the SAME direction as the finger.
-    */
-    const inertiaStrength = lerp(0.10, 0.24, nearFactor);
-    if (pointer.active) {
-      f.vx += pointer.velocityX * inertiaStrength * dt;
-      f.vy += pointer.velocityY * inertiaStrength * dt;
-    }
-
-    // Very subtle ambient drift; touch remains dominant.
-    const driftStrength = lerp(0.25, 0.75, nearFactor);
-    f.vx += Math.sin(now * f.driftRateX + f.driftPhaseX) * driftStrength * dt;
-    f.vy += Math.cos(now * f.driftRateY + f.driftPhaseY) * driftStrength * dt;
-
-    // Smooth damping.
-    const damping = Math.pow(0.10, dt);
-    f.vx *= damping;
-    f.vy *= damping;
-
-    f.x += f.vx * dt;
-    f.y += f.vy * dt;
-    f.angle += f.angularVelocity * dt;
-
-    wrapFloater(f);
-
-    push();
-    translate(f.x, f.y);
-    rotate(f.angle);
-    tint(255, f.alpha);
-    image(spriteImage, 0, 0, f.size, f.size);
-    pop();
+  if (aspect >= 1) {
+    drawHeight = f.size / aspect;
+  } else {
+    drawWidth = f.size * aspect;
   }
+
+  image(baseSprite, 0, 0, drawWidth, drawHeight);
+
+  drawingContext.filter = 'none';
+  pop();
 }
 
 function wrapFloater(f) {
-  const margin = f.size * 0.58;
+  const margin = f.size * 0.7;
 
-  if (f.x < -margin) f.x = width + margin;
-  else if (f.x > width + margin) f.x = -margin;
+  if (f.x < -margin) {
+    f.x = width + margin;
+    f.anchorX += width + margin * 2;
+  } else if (f.x > width + margin) {
+    f.x = -margin;
+    f.anchorX -= width + margin * 2;
+  }
 
-  if (f.y < -margin) f.y = height + margin;
-  else if (f.y > height + margin) f.y = -margin;
+  if (f.y < -margin) {
+    f.y = height + margin;
+    f.anchorY += height + margin * 2;
+  } else if (f.y > height + margin) {
+    f.y = -margin;
+    f.anchorY -= height + margin * 2;
+  }
 }
 
-function installPointerControls() {
+function installPointerInput() {
   const options = { passive: false };
 
-  canvasElement.style.touchAction = 'none';
+  canvasElement.addEventListener(
+    'pointerdown',
+    event => {
+      event.preventDefault();
 
-  canvasElement.addEventListener('pointerdown', event => {
-    event.preventDefault();
+      pointer.active = true;
+      pointer.x = event.clientX;
+      pointer.y = event.clientY;
+      pointer.previousX = pointer.x;
+      pointer.previousY = pointer.y;
+      pointer.vx = 0;
+      pointer.vy = 0;
+      pointer.lastTime = event.timeStamp;
 
-    pointer.active = true;
-    pointer.lastX = event.clientX;
-    pointer.lastY = event.clientY;
-    pointer.pendingX = 0;
-    pointer.pendingY = 0;
-    pointer.velocityX = 0;
-    pointer.velocityY = 0;
-    pointer.lastEventTime = event.timeStamp;
+      canvasElement.setPointerCapture?.(event.pointerId);
+    },
+    options
+  );
 
-    canvasElement.setPointerCapture?.(event.pointerId);
-  }, options);
+  canvasElement.addEventListener(
+    'pointermove',
+    event => {
+      event.preventDefault();
 
-  canvasElement.addEventListener('pointermove', event => {
-    if (!pointer.active) return;
-    event.preventDefault();
+      const x = event.clientX;
+      const y = event.clientY;
 
-    const x = event.clientX;
-    const y = event.clientY;
-    const dx = x - pointer.lastX;
-    const dy = y - pointer.lastY;
+      if (!pointer.active && event.pointerType !== 'mouse') {
+        return;
+      }
 
-    const elapsed = Math.max(
-      8,
-      Math.min(50, event.timeStamp - pointer.lastEventTime)
-    ) / 1000;
+      const elapsed =
+        Math.max(8, Math.min(50, event.timeStamp - pointer.lastTime)) /
+        1000;
 
-    // Add every movement sample, including diagonal and reversed motion.
-    pointer.pendingX += dx;
-    pointer.pendingY += dy;
+      const dx = x - pointer.previousX;
+      const dy = y - pointer.previousY;
 
-    // Low-pass filtering prevents noisy iPhone touch samples.
-    const measuredVX = constrain(dx / elapsed, -2200, 2200);
-    const measuredVY = constrain(dy / elapsed, -2200, 2200);
-    pointer.velocityX = lerp(pointer.velocityX, measuredVX, 0.45);
-    pointer.velocityY = lerp(pointer.velocityY, measuredVY, 0.45);
+      const measuredVX = constrain(dx / elapsed, -2400, 2400);
+      const measuredVY = constrain(dy / elapsed, -2400, 2400);
 
-    pointer.lastX = x;
-    pointer.lastY = y;
-    pointer.lastEventTime = event.timeStamp;
-  }, options);
+      pointer.vx = lerp(pointer.vx, measuredVX, 0.52);
+      pointer.vy = lerp(pointer.vy, measuredVY, 0.52);
+
+      pointer.x = x;
+      pointer.y = y;
+      pointer.previousX = x;
+      pointer.previousY = y;
+      pointer.lastTime = event.timeStamp;
+    },
+    options
+  );
 
   const endPointer = event => {
-    if (!pointer.active) return;
     event.preventDefault();
     pointer.active = false;
+    pointer.vx = 0;
+    pointer.vy = 0;
     canvasElement.releasePointerCapture?.(event.pointerId);
   };
 
   canvasElement.addEventListener('pointerup', endPointer, options);
   canvasElement.addEventListener('pointercancel', endPointer, options);
-  canvasElement.addEventListener('lostpointercapture', () => {
-    pointer.active = false;
+  canvasElement.addEventListener('pointerleave', event => {
+    if (event.pointerType === 'mouse') {
+      pointer.active = false;
+      pointer.vx = 0;
+      pointer.vy = 0;
+    }
   });
 }
 
 function windowResized() {
   const holder = document.getElementById('canvas-holder');
   resizeCanvas(holder.clientWidth, holder.clientHeight);
-  createFloaters();
+
+  for (const f of floaters) {
+    f.anchorX = constrain(f.anchorX, 0, width);
+    f.anchorY = constrain(f.anchorY, 0, height);
+    f.x = constrain(f.x, -f.size, width + f.size);
+    f.y = constrain(f.y, -f.size, height + f.size);
+  }
 }

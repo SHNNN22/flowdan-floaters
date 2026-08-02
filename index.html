@@ -1,20 +1,28 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#dcecf7">
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+  />
+  <meta name="theme-color" content="#dceeff" />
   <title>Flowdan Floaters</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta
+    name="description"
+    content="A p5.js vitreous-floater simulation using Flowdan imagery."
+  />
+  <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"></script>
 </head>
 <body>
-  <main id="app">
-    <div id="canvas-holder" aria-label="Interactive Flowdan floaters"></div>
+  <main>
+    <div id="canvas-holder" aria-label="Interactive Flowdan floater simulation"></div>
 
-    <section class="ui" aria-live="polite">
+    <section class="panel">
       <h1>Flowdan Floaters</h1>
-      <p>Swipe quickly. The figures lag behind, drift and settle.</p>
+      <p>Move or drag to disturb the vitreous.</p>
+      <p class="small">The floaters overshoot, drift and slowly settle.</p>
       <button id="reset-button" type="button">Reset floaters</button>
     </section>
   </main>
