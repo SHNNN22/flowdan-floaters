@@ -1,22 +1,24 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#dcecf7">
   <title>Flowdan Floaters</title>
-  <meta name="description" content="A p5.js eye-floater simulation using a transparent Flowdan image." />
-  <link rel="stylesheet" href="styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/p5@1.11.10/lib/p5.min.js"></script>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"></script>
 </head>
 <body>
-  <main>
-    <div id="canvas-holder" aria-label="Interactive Flowdan floaters canvas"></div>
-    <section class="ui" aria-label="Instructions">
-      <h1>FLOWDAN FLOATERS</h1>
-      <p>Move the cursor or drag your finger.</p>
-      <p><kbd>R</kbd> resets the floaters · <kbd>H</kbd> hides this panel</p>
+  <main id="app">
+    <div id="canvas-holder" aria-label="Interactive Flowdan floaters"></div>
+
+    <section class="ui" aria-live="polite">
+      <h1>Flowdan Floaters</h1>
+      <p>Swipe quickly. The figures lag behind, drift and settle.</p>
+      <button id="reset-button" type="button">Reset floaters</button>
     </section>
   </main>
+
   <script src="sketch.js"></script>
 </body>
 </html>

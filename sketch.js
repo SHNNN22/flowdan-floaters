@@ -1,28 +1,41 @@
-let flowdanImage;
-let floaters = [];
-let previousPointer;
-let pointerVelocity;
-let uiVisible = true;
+/*
+  Flowdan Floaters — mobile-optimised p5.js version
 
-const SETTINGS = {
-  count: 24,
-  minSize: 62,
-  maxSize: 170,
-  movementStrength: 0.075,
-  driftStrength: 0.018,
-  springStrength: 0.0012,
-  dampingNear: 0.91,
-  dampingFar: 0.965,
-  opacityNear: 72,
-  opacityFar: 26,
-  blurCopies: 2
+  Main performance changes:
+  - Uses pixelDensity(1) on phones to reduce GPU workload.
+  - Resizes the source PNG once instead of scaling a huge image every frame.
+  - Uses fewer particles on mobile.
+  - Avoids creating p5.Vector objects inside draw().
+  - Uses Pointer Events, so mouse, touch and Apple Pencil share one path.
+  - Uses frame-rate-independent movement and clamps large delta-time spikes.
+*/
+
+let sourceImage;
+let spriteImage;
+let canvasElement;
+let floaters = [];
+
+const pointer = {
+  active: false,
+  x: 0,
+  y: 0,
+  previousX: 0,
+  previousY: 0,
+  velocityX: 0,
+  velocityY: 0,
+  impulseX: 0,
+  impulseY: 0
 };
 
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const floaterCount = isMobile ? 14 : 22;
+const spriteMaxSide = isMobile ? 220 : 300;
+
 function preload() {
-  flowdanImage = loadImage(
+  sourceImage = loadImage(
     'flowdan.png',
-    () => console.info('Loaded flowdan.png'),
-    () => console.error('Missing flowdan.png. Add a transparent PNG with this exact filename.')
+    () => {},
+    error => console.error('Could not load flowdan.png', error)
   );
 }
 
@@ -30,139 +43,166 @@ function setup() {
   const holder = document.getElementById('canvas-holder');
   const canvas = createCanvas(holder.clientWidth, holder.clientHeight);
   canvas.parent(holder);
-  pixelDensity(Math.min(window.devicePixelRatio || 1, 2));
+  canvasElement = canvas.elt;
+
+  pixelDensity(isMobile ? 1 : Math.min(2, window.devicePixelRatio || 1));
+  frameRate(60);
   imageMode(CENTER);
   noStroke();
 
-  previousPointer = createVector(width / 2, height / 2);
-  pointerVelocity = createVector(0, 0);
+  prepareSprite();
   createFloaters();
+  installPointerControls();
+
+  document.getElementById('reset-button').addEventListener('click', createFloaters);
+}
+
+function prepareSprite() {
+  // Work on a copy so the original loaded asset remains untouched.
+  spriteImage = sourceImage.get();
+
+  const longestSide = Math.max(spriteImage.width, spriteImage.height);
+  if (longestSide > spriteMaxSide) {
+    const scale = spriteMaxSide / longestSide;
+    spriteImage.resize(
+      Math.max(1, Math.round(spriteImage.width * scale)),
+      Math.max(1, Math.round(spriteImage.height * scale))
+    );
+  }
 }
 
 function createFloaters() {
-  floaters = Array.from({ length: SETTINGS.count }, () => new Floater());
+  floaters.length = 0;
+
+  for (let i = 0; i < floaterCount; i += 1) {
+    const depth = random(); // 0 = near, 1 = far
+    const base = min(width, height);
+    const size = base * lerp(0.18, 0.075, depth) * random(0.78, 1.22);
+
+    floaters.push({
+      x: random(-size * 0.25, width + size * 0.25),
+      y: random(-size * 0.25, height + size * 0.25),
+      vx: random(-4, 4),
+      vy: random(-3, 3),
+      driftPhaseX: random(TWO_PI),
+      driftPhaseY: random(TWO_PI),
+      driftRateX: random(0.35, 0.7),
+      driftRateY: random(0.28, 0.62),
+      depth,
+      size,
+      alpha: lerp(82, 34, depth) * random(0.82, 1.08),
+      angle: random(TWO_PI),
+      angularVelocity: random(-0.11, 0.11) * lerp(1, 0.45, depth)
+    });
+  }
+
+  // Far objects first, near objects last.
   floaters.sort((a, b) => b.depth - a.depth);
 }
 
 function draw() {
   clear();
-  updatePointerVelocity();
 
-  for (const floater of floaters) {
-    floater.update(pointerVelocity);
-    floater.display();
-  }
-}
+  // Clamp pauses caused by Safari UI, tab switching or dropped frames.
+  const dt = Math.min(deltaTime, 34) / 1000;
+  const now = millis() / 1000;
 
-function updatePointerVelocity() {
-  const pointer = getPointerPosition();
-  const rawVelocity = p5.Vector.sub(pointer, previousPointer);
-  pointerVelocity.lerp(rawVelocity, 0.35);
-  pointerVelocity.limit(48);
-  previousPointer.set(pointer);
-}
+  // Smooth and decay the gesture impulse.
+  pointer.impulseX += (pointer.velocityX - pointer.impulseX) * 0.26;
+  pointer.impulseY += (pointer.velocityY - pointer.impulseY) * 0.26;
+  pointer.velocityX *= 0.72;
+  pointer.velocityY *= 0.72;
+  pointer.impulseX *= 0.91;
+  pointer.impulseY *= 0.91;
 
-function getPointerPosition() {
-  if (touches.length > 0) {
-    return createVector(touches[0].x, touches[0].y);
-  }
-  return createVector(mouseX, mouseY);
-}
+  for (let i = 0; i < floaters.length; i += 1) {
+    const f = floaters[i];
+    const nearFactor = 1 - f.depth;
 
-class Floater {
-  constructor() {
-    this.depth = random(0, 1);
-    this.position = createVector(random(width), random(height));
-    this.anchor = this.position.copy();
-    this.velocity = p5.Vector.random2D().mult(random(0.05, 0.35));
-    this.noiseOffset = createVector(random(1000), random(1000));
-    this.angle = random(TWO_PI);
-    this.angularVelocity = random(-0.0025, 0.0025);
-    this.baseSize = lerp(SETTINGS.maxSize, SETTINGS.minSize, this.depth) * random(0.78, 1.2);
-    this.opacity = lerp(SETTINGS.opacityNear, SETTINGS.opacityFar, this.depth) * random(0.8, 1.08);
-    this.phase = random(TWO_PI);
-  }
+    // Quick swipes create a strong opposite-direction lag.
+    const response = lerp(0.018, 0.052, nearFactor);
+    f.vx -= pointer.impulseX * response * dt;
+    f.vy -= pointer.impulseY * response * dt;
 
-  update(pointerImpulse) {
-    const reaction = lerp(1.15, 0.32, this.depth);
-    const impulse = pointerImpulse.copy().mult(-SETTINGS.movementStrength * reaction);
-    this.velocity.add(impulse);
+    // Continuous subtle organic drift, visible even without interaction.
+    const driftStrength = lerp(3.5, 8.5, nearFactor);
+    f.vx += Math.sin(now * f.driftRateX + f.driftPhaseX) * driftStrength * dt;
+    f.vy += Math.cos(now * f.driftRateY + f.driftPhaseY) * driftStrength * dt;
 
-    const driftAngle = noise(this.noiseOffset.x, this.noiseOffset.y, frameCount * 0.004) * TWO_PI * 2;
-    const drift = p5.Vector.fromAngle(driftAngle).mult(SETTINGS.driftStrength * lerp(1.2, 0.55, this.depth));
-    this.velocity.add(drift);
+    // Exponential damping behaves consistently at 30 or 60 fps.
+    const dampingPerSecond = lerp(0.42, 0.28, nearFactor);
+    const damping = Math.pow(dampingPerSecond, dt);
+    f.vx *= damping;
+    f.vy *= damping;
 
-    const spring = p5.Vector.sub(this.anchor, this.position).mult(SETTINGS.springStrength);
-    this.velocity.add(spring);
+    f.x += f.vx * dt;
+    f.y += f.vy * dt;
+    f.angle += f.angularVelocity * dt;
 
-    const damping = lerp(SETTINGS.dampingNear, SETTINGS.dampingFar, this.depth);
-    this.velocity.mult(damping);
-    this.position.add(this.velocity);
-
-    this.angle += this.angularVelocity + sin(frameCount * 0.006 + this.phase) * 0.00045;
-    this.anchor.x += sin(frameCount * 0.002 + this.phase) * 0.025;
-    this.anchor.y += cos(frameCount * 0.0017 + this.phase) * 0.018;
-
-    this.wrapAroundScreen();
-  }
-
-  wrapAroundScreen() {
-    const margin = this.baseSize;
-    if (this.position.x < -margin) {
-      this.position.x = width + margin;
-      this.anchor.x = this.position.x;
-    }
-    if (this.position.x > width + margin) {
-      this.position.x = -margin;
-      this.anchor.x = this.position.x;
-    }
-    if (this.position.y < -margin) {
-      this.position.y = height + margin;
-      this.anchor.y = this.position.y;
-    }
-    if (this.position.y > height + margin) {
-      this.position.y = -margin;
-      this.anchor.y = this.position.y;
-    }
-  }
-
-  display() {
-    if (!flowdanImage || flowdanImage.width <= 1) return;
-
-    const pulse = 1 + sin(frameCount * 0.008 + this.phase) * 0.025;
-    const size = this.baseSize * pulse;
+    wrapFloater(f);
 
     push();
-    translate(this.position.x, this.position.y);
-    rotate(this.angle);
-
-    for (let i = SETTINGS.blurCopies; i >= 1; i--) {
-      const spread = i * 1.8;
-      tint(255, this.opacity * 0.12);
-      image(flowdanImage, spread, 0, size * 1.015, size * 1.015);
-      image(flowdanImage, -spread, 0, size * 1.015, size * 1.015);
-    }
-
-    tint(255, this.opacity);
-    image(flowdanImage, 0, 0, size, size);
+    translate(f.x, f.y);
+    rotate(f.angle);
+    tint(255, f.alpha);
+    image(spriteImage, 0, 0, f.size, f.size);
     pop();
   }
 }
 
-function keyPressed() {
-  if (key === 'r' || key === 'R') createFloaters();
+function wrapFloater(f) {
+  const margin = f.size * 0.58;
 
-  if (key === 'h' || key === 'H') {
-    uiVisible = !uiVisible;
-    document.querySelector('.ui').classList.toggle('hidden', !uiVisible);
-  }
+  if (f.x < -margin) f.x = width + margin;
+  else if (f.x > width + margin) f.x = -margin;
+
+  if (f.y < -margin) f.y = height + margin;
+  else if (f.y > height + margin) f.y = -margin;
 }
 
-function touchMoved() {
-  return false;
+function installPointerControls() {
+  const options = { passive: false };
+
+  canvasElement.addEventListener('pointerdown', event => {
+    event.preventDefault();
+    pointer.active = true;
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+    pointer.previousX = pointer.x;
+    pointer.previousY = pointer.y;
+    canvasElement.setPointerCapture?.(event.pointerId);
+  }, options);
+
+  canvasElement.addEventListener('pointermove', event => {
+    event.preventDefault();
+
+    const x = event.clientX;
+    const y = event.clientY;
+    const dx = x - pointer.previousX;
+    const dy = y - pointer.previousY;
+
+    // Convert movement into approximate pixels per second and cap spikes.
+    const seconds = Math.max(0.008, Math.min(0.05, deltaTime / 1000));
+    pointer.velocityX = constrain(dx / seconds, -2400, 2400);
+    pointer.velocityY = constrain(dy / seconds, -2400, 2400);
+
+    pointer.x = x;
+    pointer.y = y;
+    pointer.previousX = x;
+    pointer.previousY = y;
+  }, options);
+
+  const endPointer = event => {
+    event.preventDefault();
+    pointer.active = false;
+  };
+
+  canvasElement.addEventListener('pointerup', endPointer, options);
+  canvasElement.addEventListener('pointercancel', endPointer, options);
 }
 
 function windowResized() {
   const holder = document.getElementById('canvas-holder');
   resizeCanvas(holder.clientWidth, holder.clientHeight);
+  createFloaters();
 }
