@@ -6,7 +6,7 @@
     name="viewport"
     content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
   />
-  <meta name="theme-color" content="#dceeff" />
+  <meta name="theme-color" content="#68b9ff" />
   <title>Flowdan Floaters</title>
   <meta
     name="description"
@@ -17,12 +17,13 @@
 </head>
 <body>
   <main>
+    <div id="sky-layer" aria-hidden="true"></div>
     <div id="canvas-holder" aria-label="Interactive Flowdan floater simulation"></div>
 
     <section class="panel">
       <h1>Flowdan Floaters</h1>
       <p>Move or drag to disturb the vitreous.</p>
-      <p class="small">The floaters overshoot, drift and slowly settle.</p>
+      <p class="small">Each floater reacts differently, overshoots once and settles.</p>
       <button id="reset-button" type="button">Reset floaters</button>
     </section>
   </main>

@@ -1,59 +1,35 @@
 /*
-  Flowdan Floaters — viscous flow-field simulation
-
-  Required image:
-    flowdan.png
-
-  The sketch automatically creates many visual variants from that one image.
-  No additional PNG files are required.
+  Flowdan Floaters v2
+  - brighter summer sky handled in styles.css
+  - stronger individuality between floaters
+  - one main overshoot, reduced bounce range
+  - one source image: flowdan.png
 */
 
 let sourceImage;
-let baseSprite;
+let spriteImage;
 let canvasElement;
 let floaters = [];
 
-const DEVICE_IS_MOBILE =
+const IS_MOBILE =
   /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
   navigator.maxTouchPoints > 1;
 
-const REDUCED_MOTION = window.matchMedia?.(
-  '(prefers-reduced-motion: reduce)'
-).matches ?? false;
-
-const FLOATER_COUNT = REDUCED_MOTION
-  ? 8
-  : DEVICE_IS_MOBILE
-    ? 14
-    : 24;
-
-const MAX_SPRITE_SIDE = DEVICE_IS_MOBILE ? 260 : 420;
+const COUNT = IS_MOBILE ? 14 : 24;
+const MAX_SPRITE_SIDE = IS_MOBILE ? 260 : 420;
 
 const pointer = {
   active: false,
-  x: 0,
-  y: 0,
-  previousX: 0,
-  previousY: 0,
-  vx: 0,
-  vy: 0,
-  smoothedVX: 0,
-  smoothedVY: 0,
+  lastX: 0,
+  lastY: 0,
   lastTime: 0
-};
-
-let fluid = {
-  vx: 0,
-  vy: 0,
-  displacementX: 0,
-  displacementY: 0
 };
 
 function preload() {
   sourceImage = loadImage(
     'flowdan.png',
     () => {},
-    error => console.error('Could not load flowdan.png', error)
+    error => console.error('Unable to load flowdan.png', error)
   );
 }
 
@@ -71,229 +47,186 @@ function setup() {
   noStroke();
 
   prepareSprite();
-  rebuildFloaters();
-  installPointerInput();
+  resetFloaters();
+  installPointerControls();
 
   document
     .getElementById('reset-button')
-    ?.addEventListener('click', rebuildFloaters);
+    ?.addEventListener('click', resetFloaters);
 }
 
 function prepareSprite() {
-  baseSprite = sourceImage.get();
+  spriteImage = sourceImage.get();
 
-  const longestSide = Math.max(baseSprite.width, baseSprite.height);
+  const longest = Math.max(spriteImage.width, spriteImage.height);
 
-  if (longestSide > MAX_SPRITE_SIDE) {
-    const scale = MAX_SPRITE_SIDE / longestSide;
-
-    baseSprite.resize(
-      Math.max(1, Math.round(baseSprite.width * scale)),
-      Math.max(1, Math.round(baseSprite.height * scale))
+  if (longest > MAX_SPRITE_SIDE) {
+    const scale = MAX_SPRITE_SIDE / longest;
+    spriteImage.resize(
+      Math.max(1, Math.round(spriteImage.width * scale)),
+      Math.max(1, Math.round(spriteImage.height * scale))
     );
   }
 }
 
-function rebuildFloaters() {
-  floaters.length = 0;
+function resetFloaters() {
+  floaters = [];
 
-  for (let index = 0; index < FLOATER_COUNT; index += 1) {
-    floaters.push(createFloater(index));
-  }
-
-  // Distant elements are rendered first.
-  floaters.sort((a, b) => b.depth - a.depth);
-
-  fluid.vx = 0;
-  fluid.vy = 0;
-  fluid.displacementX = 0;
-  fluid.displacementY = 0;
-}
-
-function createFloater(index) {
-  const depth = random();
-  const near = 1 - depth;
   const reference = min(width, height);
 
-  return {
-    x: random(width),
-    y: random(height),
+  for (let i = 0; i < COUNT; i += 1) {
+    const depth = random();
+    const near = 1 - depth;
 
-    anchorX: random(width),
-    anchorY: random(height),
+    /*
+      Personality groups:
+      some barely react, some move strongly, some settle quickly.
+    */
+    const personality = random();
+    const responseClass =
+      personality < 0.24 ? 0.38 :
+      personality < 0.62 ? 0.72 :
+      1.0;
 
-    vx: random(-3, 3),
-    vy: random(-3, 3),
+    const springBase = lerp(5.2, 9.0, near);
+    const dragBase = lerp(5.1, 6.8, depth);
 
-    depth,
-    mass: lerp(1.9, 0.7, near),
-    response: lerp(0.22, 0.68, near),
-    spring: lerp(0.28, 0.10, near),
-    drag: lerp(1.45, 0.82, near),
+    floaters.push({
+      anchorX: random(width),
+      anchorY: random(height),
 
-    size:
-      reference *
-      lerp(0.075, 0.22, near) *
-      random(0.78, 1.26),
+      offsetX: random(-5, 5),
+      offsetY: random(-5, 5),
 
-    alpha:
-      lerp(24, 92, near) *
-      random(0.82, 1.08),
+      velocityX: 0,
+      velocityY: 0,
 
-    blurAmount:
-      depth > 0.66
-        ? random(1.5, 3.5)
-        : depth < 0.22
-          ? random(0.5, 2.0)
-          : random(0, 1.0),
+      depth,
 
-    angle: random(TWO_PI),
-    angularVelocity: random(-0.08, 0.08),
+      mass: lerp(1.9, 0.72, near) * random(0.78, 1.34),
 
-    wobblePhaseX: random(TWO_PI),
-    wobblePhaseY: random(TWO_PI),
-    wobbleRateX: random(0.18, 0.42),
-    wobbleRateY: random(0.17, 0.38),
-    wobbleAmplitude: random(2, 8) * lerp(0.45, 1.0, near),
+      impulseScale:
+        lerp(0.16, 0.58, near) *
+        responseClass *
+        random(0.76, 1.18),
 
-    imageFlip: random() > 0.5 ? 1 : -1,
+      spring:
+        springBase *
+        random(0.90, 1.12),
 
-    // Slightly varied tonal treatment from a single PNG.
-    tintValue: random(220, 255),
+      drag:
+        dragBase *
+        random(0.94, 1.12),
 
-    index
-  };
+      size:
+        reference *
+        lerp(0.065, 0.23, near) *
+        random(0.72, 1.30),
+
+      alpha:
+        lerp(22, 94, near) *
+        random(0.78, 1.10),
+
+      angle: random(TWO_PI),
+      angularVelocity: random(-0.07, 0.07),
+
+      flip: random() > 0.5 ? 1 : -1,
+
+      blur:
+        depth > 0.72
+          ? random(1.4, 3.2)
+          : depth < 0.16
+            ? random(0.4, 1.6)
+            : random(0, 0.8),
+
+      noiseSeedX: random(1000),
+      noiseSeedY: random(1000),
+      noiseSpeed: random(0.10, 0.24),
+      noiseAmount:
+        random(1.5, 6.5) *
+        lerp(0.35, 1.0, near),
+
+      tintValue: random(228, 255),
+
+      rotationResponse: random(0.000025, 0.00007)
+    });
+  }
+
+  floaters.sort((a, b) => b.depth - a.depth);
 }
 
 function draw() {
   clear();
 
   const dt = Math.min(deltaTime, 33.33) / 1000;
-  const time = millis() / 1000;
-
-  updatePointerSmoothing(dt);
-  updateFluid(dt);
+  const t = millis() / 1000;
 
   for (const floater of floaters) {
-    updateFloater(floater, dt, time);
-    renderFloater(floater);
+    updateFloater(floater, dt);
+    renderFloater(floater, t);
   }
 }
 
-function updatePointerSmoothing(dt) {
-  const targetVX = pointer.active ? pointer.vx : 0;
-  const targetVY = pointer.active ? pointer.vy : 0;
-
-  const smoothing = 1 - Math.exp(-(pointer.active ? 9.0 : 3.0) * dt);
-
-  pointer.smoothedVX = lerp(pointer.smoothedVX, targetVX, smoothing);
-  pointer.smoothedVY = lerp(pointer.smoothedVY, targetVY, smoothing);
-}
-
-function updateFluid(dt) {
+function updateFloater(f, dt) {
   /*
-    Pointer motion excites the virtual vitreous.
-    The vitreous continues moving after the gesture and then settles.
+    Damped spring.
+    Higher drag and slightly stronger spring reduce the bounce range.
   */
-  const inputStrength = REDUCED_MOTION ? 0.08 : 0.22;
+  const accelerationX =
+    (-f.spring * f.offsetX - f.drag * f.velocityX) / f.mass;
 
-  fluid.vx += pointer.smoothedVX * inputStrength * dt;
-  fluid.vy += pointer.smoothedVY * inputStrength * dt;
+  const accelerationY =
+    (-f.spring * f.offsetY - f.drag * f.velocityY) / f.mass;
 
-  // Spring toward equilibrium.
-  fluid.vx += -fluid.displacementX * 5.4 * dt;
-  fluid.vy += -fluid.displacementY * 5.4 * dt;
+  f.velocityX += accelerationX * dt;
+  f.velocityY += accelerationY * dt;
 
-  // Viscous damping.
-  const fluidDamping = Math.exp(-3.15 * dt);
-  fluid.vx *= fluidDamping;
-  fluid.vy *= fluidDamping;
-
-  fluid.displacementX += fluid.vx * dt;
-  fluid.displacementY += fluid.vy * dt;
-
-  // Keep displacement bounded after extreme swipes.
-  const maxDisplacement = min(width, height) * 0.23;
-  fluid.displacementX = constrain(
-    fluid.displacementX,
-    -maxDisplacement,
-    maxDisplacement
-  );
-  fluid.displacementY = constrain(
-    fluid.displacementY,
-    -maxDisplacement,
-    maxDisplacement
-  );
-}
-
-function updateFloater(f, dt, time) {
-  const near = 1 - f.depth;
-
-  /*
-    Each particle receives the common fluid movement with a different
-    response according to depth and mass.
-  */
-  const targetX =
-    f.anchorX +
-    fluid.displacementX * lerp(0.34, 1.15, near);
-
-  const targetY =
-    f.anchorY +
-    fluid.displacementY * lerp(0.34, 1.15, near);
-
-  const springX = (targetX - f.x) * f.spring;
-  const springY = (targetY - f.y) * f.spring;
-
-  /*
-    Flow force adds overshoot.
-    Near floaters respond more strongly and settle more visibly.
-  */
-  const flowForceX = fluid.vx * f.response;
-  const flowForceY = fluid.vy * f.response;
-
-  const wobbleX =
-    Math.sin(time * f.wobbleRateX + f.wobblePhaseX) *
-    f.wobbleAmplitude;
-
-  const wobbleY =
-    Math.cos(time * f.wobbleRateY + f.wobblePhaseY) *
-    f.wobbleAmplitude;
-
-  f.vx += ((springX + flowForceX + wobbleX * 0.12) / f.mass) * dt * 60;
-  f.vy += ((springY + flowForceY + wobbleY * 0.12) / f.mass) * dt * 60;
-
-  const particleDamping = Math.exp(-f.drag * dt);
-  f.vx *= particleDamping;
-  f.vy *= particleDamping;
-
-  f.x += f.vx * dt;
-  f.y += f.vy * dt;
+  f.offsetX += f.velocityX * dt;
+  f.offsetY += f.velocityY * dt;
 
   f.angle +=
-    (f.angularVelocity + fluid.vx * 0.000035 * f.imageFlip) * dt;
-
-  wrapFloater(f);
+    (f.angularVelocity +
+      f.velocityX * f.rotationResponse * f.flip) *
+    dt;
 }
 
-function renderFloater(f) {
-  push();
+function renderFloater(f, t) {
+  const driftX =
+    (noise(f.noiseSeedX + t * f.noiseSpeed) - 0.5) *
+    2 *
+    f.noiseAmount;
 
-  translate(f.x, f.y);
+  const driftY =
+    (noise(f.noiseSeedY + t * f.noiseSpeed) - 0.5) *
+    2 *
+    f.noiseAmount;
+
+  const x = wrapCoordinate(
+    f.anchorX + f.offsetX + driftX,
+    width,
+    f.size
+  );
+
+  const y = wrapCoordinate(
+    f.anchorY + f.offsetY + driftY,
+    height,
+    f.size
+  );
+
+  push();
+  translate(x, y);
   rotate(f.angle);
-  scale(f.imageFlip, 1);
+  scale(f.flip, 1);
 
   tint(f.tintValue, f.alpha);
 
-  if (f.blurAmount > 0.25) {
-    drawingContext.filter = `blur(${f.blurAmount}px)`;
+  if (f.blur > 0.25) {
+    drawingContext.filter = `blur(${f.blur}px)`;
   }
 
-  /*
-    Preserve the original image aspect ratio instead of forcing a square.
-  */
   const aspect =
-    baseSprite.width > 0 && baseSprite.height > 0
-      ? baseSprite.width / baseSprite.height
+    spriteImage.width > 0 && spriteImage.height > 0
+      ? spriteImage.width / spriteImage.height
       : 1;
 
   let drawWidth = f.size;
@@ -305,33 +238,55 @@ function renderFloater(f) {
     drawWidth = f.size * aspect;
   }
 
-  image(baseSprite, 0, 0, drawWidth, drawHeight);
+  image(spriteImage, 0, 0, drawWidth, drawHeight);
 
   drawingContext.filter = 'none';
   pop();
 }
 
-function wrapFloater(f) {
-  const margin = f.size * 0.7;
+function wrapCoordinate(value, limit, size) {
+  const margin = size * 0.65;
+  const span = limit + margin * 2;
 
-  if (f.x < -margin) {
-    f.x = width + margin;
-    f.anchorX += width + margin * 2;
-  } else if (f.x > width + margin) {
-    f.x = -margin;
-    f.anchorX -= width + margin * 2;
-  }
+  let wrapped = value + margin;
+  wrapped = ((wrapped % span) + span) % span;
 
-  if (f.y < -margin) {
-    f.y = height + margin;
-    f.anchorY += height + margin * 2;
-  } else if (f.y > height + margin) {
-    f.y = -margin;
-    f.anchorY -= height + margin * 2;
+  return wrapped - margin;
+}
+
+function applyGestureImpulse(dx, dy, elapsed) {
+  const safeElapsed = max(0.008, min(0.05, elapsed));
+
+  const gestureVX = constrain(dx / safeElapsed, -2200, 2200);
+  const gestureVY = constrain(dy / safeElapsed, -2200, 2200);
+
+  for (const f of floaters) {
+    const variation = random(0.88, 1.12);
+
+    /*
+      Reduced from the previous version:
+      less immediate displacement and less post-release travel.
+    */
+    f.offsetX += dx * f.impulseScale * 0.24 * variation;
+    f.offsetY += dy * f.impulseScale * 0.24 * variation;
+
+    f.velocityX +=
+      gestureVX *
+      f.impulseScale *
+      0.19 *
+      variation /
+      f.mass;
+
+    f.velocityY +=
+      gestureVY *
+      f.impulseScale *
+      0.19 *
+      variation /
+      f.mass;
   }
 }
 
-function installPointerInput() {
+function installPointerControls() {
   const options = { passive: false };
 
   canvasElement.addEventListener(
@@ -340,12 +295,8 @@ function installPointerInput() {
       event.preventDefault();
 
       pointer.active = true;
-      pointer.x = event.clientX;
-      pointer.y = event.clientY;
-      pointer.previousX = pointer.x;
-      pointer.previousY = pointer.y;
-      pointer.vx = 0;
-      pointer.vy = 0;
+      pointer.lastX = event.clientX;
+      pointer.lastY = event.clientY;
       pointer.lastTime = event.timeStamp;
 
       canvasElement.setPointerCapture?.(event.pointerId);
@@ -356,52 +307,53 @@ function installPointerInput() {
   canvasElement.addEventListener(
     'pointermove',
     event => {
+      if (!pointer.active && event.pointerType !== 'mouse') {
+        return;
+      }
+
       event.preventDefault();
 
       const x = event.clientX;
       const y = event.clientY;
 
-      if (!pointer.active && event.pointerType !== 'mouse') {
+      if (!pointer.active && event.pointerType === 'mouse') {
+        pointer.active = true;
+        pointer.lastX = x;
+        pointer.lastY = y;
+        pointer.lastTime = event.timeStamp;
         return;
       }
 
-      const elapsed =
-        Math.max(8, Math.min(50, event.timeStamp - pointer.lastTime)) /
-        1000;
+      const dx = x - pointer.lastX;
+      const dy = y - pointer.lastY;
+      const elapsed = (event.timeStamp - pointer.lastTime) / 1000;
 
-      const dx = x - pointer.previousX;
-      const dy = y - pointer.previousY;
+      if (abs(dx) + abs(dy) > 0.1) {
+        applyGestureImpulse(dx, dy, elapsed);
+      }
 
-      const measuredVX = constrain(dx / elapsed, -2400, 2400);
-      const measuredVY = constrain(dy / elapsed, -2400, 2400);
-
-      pointer.vx = lerp(pointer.vx, measuredVX, 0.52);
-      pointer.vy = lerp(pointer.vy, measuredVY, 0.52);
-
-      pointer.x = x;
-      pointer.y = y;
-      pointer.previousX = x;
-      pointer.previousY = y;
+      pointer.lastX = x;
+      pointer.lastY = y;
       pointer.lastTime = event.timeStamp;
     },
     options
   );
 
-  const endPointer = event => {
+  const releasePointer = event => {
     event.preventDefault();
-    pointer.active = false;
-    pointer.vx = 0;
-    pointer.vy = 0;
+
+    if (event.pointerType !== 'mouse') {
+      pointer.active = false;
+    }
+
     canvasElement.releasePointerCapture?.(event.pointerId);
   };
 
-  canvasElement.addEventListener('pointerup', endPointer, options);
-  canvasElement.addEventListener('pointercancel', endPointer, options);
+  canvasElement.addEventListener('pointerup', releasePointer, options);
+  canvasElement.addEventListener('pointercancel', releasePointer, options);
   canvasElement.addEventListener('pointerleave', event => {
     if (event.pointerType === 'mouse') {
       pointer.active = false;
-      pointer.vx = 0;
-      pointer.vy = 0;
     }
   });
 }
@@ -413,7 +365,5 @@ function windowResized() {
   for (const f of floaters) {
     f.anchorX = constrain(f.anchorX, 0, width);
     f.anchorY = constrain(f.anchorY, 0, height);
-    f.x = constrain(f.x, -f.size, width + f.size);
-    f.y = constrain(f.y, -f.size, height + f.size);
   }
 }
