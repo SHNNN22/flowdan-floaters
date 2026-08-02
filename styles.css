@@ -1,0 +1,63 @@
+* { box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255,255,255,0.96) 0%, rgba(219,235,248,0.92) 44%, rgba(157,199,229,0.95) 100%);
+  color: #0d1820;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+main,
+#canvas-holder {
+  position: fixed;
+  inset: 0;
+}
+
+canvas {
+  display: block;
+  cursor: crosshair;
+}
+
+.ui {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  z-index: 10;
+  max-width: min(330px, calc(100vw - 36px));
+  padding: 14px 16px;
+  border: 1px solid rgba(255,255,255,0.55);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.42);
+  box-shadow: 0 12px 35px rgba(22, 62, 86, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: opacity 180ms ease;
+  user-select: none;
+}
+
+.ui.hidden { opacity: 0; pointer-events: none; }
+
+.ui h1 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  letter-spacing: 0.14em;
+}
+
+.ui p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.72;
+}
+
+kbd {
+  padding: 1px 5px;
+  border: 1px solid rgba(13,24,32,0.18);
+  border-radius: 4px;
+  background: rgba(255,255,255,0.64);
+  font: inherit;
+}
