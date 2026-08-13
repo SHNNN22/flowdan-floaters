@@ -124,8 +124,8 @@ function resetFloaters() {
         random(0.72, 1.30),
 
       alpha:
-        lerp(22, 94, near) *
-        random(0.78, 1.10),
+        lerp(90, 175, near) *
+        random(0.90, 1.06),
 
       angle: random(TWO_PI),
       angularVelocity: random(-0.07, 0.07),
@@ -238,7 +238,9 @@ function renderFloater(f, t) {
     drawWidth = f.size * aspect;
   }
 
+  blendMode(SOFT_LIGHT);
   image(spriteImage, 0, 0, drawWidth, drawHeight);
+  blendMode(BLEND);
 
   drawingContext.filter = 'none';
   pop();
