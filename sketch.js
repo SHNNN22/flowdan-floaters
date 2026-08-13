@@ -124,8 +124,8 @@ function resetFloaters() {
         random(0.72, 1.30),
 
       alpha:
-        lerp(90, 175, near) *
-        random(0.90, 1.06),
+        lerp(108, 205, near) *
+        random(0.92, 1.04),
 
       angle: random(TWO_PI),
       angularVelocity: random(-0.07, 0.07),
@@ -156,7 +156,7 @@ function resetFloaters() {
 }
 
 function draw() {
-  clear();
+  drawSummerSky();
 
   const dt = Math.min(deltaTime, 33.33) / 1000;
   const t = millis() / 1000;
@@ -164,6 +164,59 @@ function draw() {
   for (const floater of floaters) {
     updateFloater(floater, dt);
     renderFloater(floater, t);
+  }
+}
+
+
+function drawSummerSky() {
+  blendMode(BLEND);
+
+  // Vertical summer-sky gradient rendered INSIDE the p5 canvas.
+  const ctx = drawingContext;
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0.00, '#239fff');
+  gradient.addColorStop(0.48, '#62c1ff');
+  gradient.addColorStop(1.00, '#b5e2ff');
+
+  ctx.save();
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  // Soft sun glow.
+  const sunX = width * 0.52;
+  const sunY = height * 0.04;
+  const glowRadius = max(width, height) * 0.48;
+  const glow = ctx.createRadialGradient(
+    sunX, sunY, 0,
+    sunX, sunY, glowRadius
+  );
+  glow.addColorStop(0.00, 'rgba(255,255,255,0.34)');
+  glow.addColorStop(0.34, 'rgba(255,255,255,0.13)');
+  glow.addColorStop(1.00, 'rgba(255,255,255,0.00)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+
+  // Very subtle clouds / haze.
+  const t = millis() * 0.000025;
+  noStroke();
+
+  for (let i = 0; i < 5; i += 1) {
+    const x =
+      ((width * (0.08 + i * 0.24) + t * width * (12 + i * 2)) %
+        (width * 1.45)) -
+      width * 0.22;
+
+    const y =
+      height * (0.68 + 0.055 * sin(t * 16 + i * 1.7)) +
+      i * 7;
+
+    const w = width * (0.25 + i * 0.015);
+    const h = height * (0.055 + i * 0.003);
+
+    fill(255, 255, 255, 11 + i * 2);
+    ellipse(x, y, w, h);
+    ellipse(x + w * 0.18, y - h * 0.22, w * 0.62, h * 1.18);
   }
 }
 
