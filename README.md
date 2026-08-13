@@ -28,10 +28,3 @@ Keep:
 After uploading, test with:
 
 `https://shnnn22.github.io/flowdan-floaters/?v=10`
-
-
-## Soft Light compositing update
-
-The summer sky is now rendered inside the p5 canvas, so `SOFT_LIGHT`
-composites against actual blue canvas pixels, closer to Photoshop behavior.
-The v2 physics are unchanged.
